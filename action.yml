@@ -1,0 +1,98 @@
+name: Code Engine function test 
+description: Github action to test IBM Cloud Code Engine functions
+author: Skywalker_etw
+
+branding:
+  icon: cloud
+  color: blue
+
+inputs:
+
+  runtime:
+    description: "Programming Language used by your Function"
+    required: true
+
+  source-dir:
+    description: "Path to the directory containing the source code"
+    required: false
+    default: .
+
+  test-file:
+    description: ""
+    required: false
+
+runs:
+  using: composite
+
+  steps:
+
+  - name: Get Runtime info
+    id: runtime
+    shell: bash
+    run: |
+      echo "name=$(echo '${{ inputs.runtime }}' | cut -d'-' -f1)" >> "$GITHUB_OUTPUT"
+      echo "version=$(echo '${{ inputs.runtime }}' | cut -d'-' -f2)" >> "$GITHUB_OUTPUT"
+
+  - name: info
+    shell: bash
+    run: |
+      echo "${{ steps.runtime.outputs.name }}"
+      echo "${{ steps.runtime.outputs.version }}"
+
+  - name: Set test file
+    id: test-file
+    shell: bash
+    run: |
+      if [[ "${{ inputs.test-file }}" == "" ]] ; then
+        case "${{ steps.runtime.outputs.name }}" in
+
+        python)
+          echo "file=*test*.py" >> "$GITHUB_OUTPUT"
+          ;;
+
+        nodejs)
+          echo "file=*test*.js" >> "$GITHUB_OUTPUT"
+          ;;
+
+        esac
+
+      else
+        echo "test-file=${{ inputs.test-file }}" >> "$GITHUB_OUTPUT"
+      fi
+
+
+  - name: Install Python
+    uses: actions/setup-python@v4
+    if: steps.runtime.outputs.name == 'python'
+    with:
+      python-version: "${{ steps.runtime.outputs.version }}"
+  
+  - name: Test Python Function
+    shell: bash
+    if: steps.runtime.outputs.name == 'python'
+    working-directory: "${{ inputs.source-dir }}"
+    run: |
+        if [ -e "requirements.txt" ]; then
+          virtualenv virtualenv
+          source virtualenv/bin/activate
+          pip install -r requirements.txt
+        fi
+        mv __main__.py main__.py
+        python ${{ steps.test-file.outputs.file }} -v
+        
+  - name: Install Nodejs
+    uses: actions/setup-node@v3
+    if: steps.runtime.outputs.name == 'nodejs'
+    with:
+      node-version: "${{ steps.runtime.outputs.version }}"
+
+  - name: Test Nodejs Function
+    shell: bash
+    working-directory: "${{ inputs.source-dir }}"
+    if: steps.runtime.outputs.name == 'nodejs'
+    run: |
+      if [ -e "package.json" ]; then
+        npm install
+      fi
+      npm install mocha chai
+      npx mocha ${{ steps.test-file.outputs.file }}
