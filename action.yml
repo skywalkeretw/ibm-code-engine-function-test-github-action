@@ -9,7 +9,7 @@ branding:
 inputs:
 
   runtime:
-    description: "Programming Language used by your Function"
+    description: "Programming Language used by your Function `nodejs-18`, `python-3.11`"
     required: true
 
   source-dir:
@@ -18,13 +18,30 @@ inputs:
     default: .
 
   test-file:
-    description: "Specify the file that should be run to test your Function if not specified the file containing the name `test` will be run"
+    description: "The file with your tests in it that should be run specify the name from your source dir e.g. main.test.js main_test.py"
     required: false
 
 runs:
   using: composite
 
   steps:
+
+# Create a temp dir where the source code is copied into so not to leave any unwanted artifacts 
+
+  - name: Create Temp Dir
+    id: tempdir
+    working-directory: "${{ inputs.source-dir }}"
+    shell: bash
+    run: |
+      echo "name=$(mktemp -d)" >> "$GITHUB_OUTPUT"
+  
+  - name: Load Temp Dir
+    working-directory: "${{ inputs.source-dir }}"
+    shell: bash
+    run: |
+      cp -r ./* ${{ steps.tempdir.outputs.name }}
+
+# set the values of the runtime, name and version
 
   - name: Get Runtime info
     id: runtime
@@ -55,25 +72,13 @@ runs:
         echo "test-file=${{ inputs.test-file }}" >> "$GITHUB_OUTPUT"
       fi
 
+# Install Required Programming Language
 
   - name: Install Python
     uses: actions/setup-python@v4
     if: steps.runtime.outputs.name == 'python'
     with:
       python-version: "${{ steps.runtime.outputs.version }}"
-  
-  - name: Test Python Function
-    shell: bash
-    if: steps.runtime.outputs.name == 'python'
-    working-directory: "${{ inputs.source-dir }}"
-    run: |
-        if [ -e "requirements.txt" ]; then
-          virtualenv virtualenv
-          source virtualenv/bin/activate
-          pip install -r requirements.txt
-        fi
-        mv __main__.py main__.py
-        python ${{ steps.test-file.outputs.file }} -v
         
   - name: Install Nodejs
     uses: actions/setup-node@v3
@@ -81,9 +86,29 @@ runs:
     with:
       node-version: "${{ steps.runtime.outputs.version }}"
 
+# Test the Function
+
+  - name: Test Python Function
+    shell: bash
+    if: steps.runtime.outputs.name == 'python'
+    working-directory: "${{ inputs.source-dir }}"
+    run: |
+        # check if requirements.txt exists and dependancies have to be installed
+        if [ -e "requirements.txt" ]; then
+          pip install virtualenv
+          virtualenv virtualenv
+          source virtualenv/bin/activate
+          pip install -r requirements.txt
+        fi
+        # check if the main file is called __main__.py if so rename it to main__.py so the test can be executed
+        if [ -e "__main__.py" ]; then
+          mv __main__.py main__.py      
+        fi
+        python ${{ steps.test-file.outputs.file }} -v
+
   - name: Test Nodejs Function
     shell: bash
-    working-directory: "${{ inputs.source-dir }}"
+    working-directory: "${{ steps.tempdir.outputs.name }}"
     if: steps.runtime.outputs.name == 'nodejs'
     run: |
       if [ -e "package.json" ]; then
@@ -91,3 +116,10 @@ runs:
       fi
       npm install mocha chai
       npx mocha ${{ steps.test-file.outputs.file }}
+
+# cleanup step
+
+  - name: Cleanup
+    shell: bash
+    run: |
+      rm -rf ${{ steps.tempdir.outputs.name }}
