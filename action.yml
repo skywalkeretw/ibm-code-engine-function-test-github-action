@@ -18,7 +18,7 @@ inputs:
     default: .
 
   test-file:
-    description: ""
+    description: "Specify the file that should be run to test your Function if not specified the file containing the name `test` will be run"
     required: false
 
 runs:
@@ -33,11 +33,6 @@ runs:
       echo "name=$(echo '${{ inputs.runtime }}' | cut -d'-' -f1)" >> "$GITHUB_OUTPUT"
       echo "version=$(echo '${{ inputs.runtime }}' | cut -d'-' -f2)" >> "$GITHUB_OUTPUT"
 
-  - name: info
-    shell: bash
-    run: |
-      echo "${{ steps.runtime.outputs.name }}"
-      echo "${{ steps.runtime.outputs.version }}"
 
   - name: Set test file
     id: test-file
